@@ -5,26 +5,26 @@ import datetime as dt
 from bluepy import btle
 
 gadgets = {
-    'Bad': {
-        'addr': 'DC:82:71:D2:60:AF',
-        'logInterval': 240000,
-    },
-    'Schlafzimmer': {
-        'addr': 'C3:77:1E:95:8E:E3',
-        'logInterval': 240000,
-    },
+#     'Bad': {
+#         'addr': 'DC:82:71:D2:60:AF',
+#         'logInterval': 240000,
+#     },
+#     'Schlafzimmer': {
+#         'addr': 'C3:77:1E:95:8E:E3',
+#         'logInterval': 240000,
+#     },
     'Wohnzimmer': {
         'addr': 'DE:45:C3:F0:92:1A',
         'logInterval': 240000,
     },
-    'Küche': {
-        'addr': 'EF:CA:B0:9A:BC:B4',
-        'logInterval': 240000,
-    },
-    'Arbeitszimmer': {
-        'addr': 'F9:A2:EB:77:F1:91',
-        'logInterval': 240000,
-    },
+#     'Kueche': {
+#         'addr': 'EF:CA:B0:9A:BC:B4',
+#         'logInterval': 240000,
+#     },
+#     'Arbeitszimmer': {
+#         'addr': 'F9:A2:EB:77:F1:91',
+#         'logInterval': 240000,
+#     },
 }
 
 logFileName = 'data.csv'
@@ -36,6 +36,7 @@ def storeData(gadgetName, gadgetData):
     data.index.name = 'Timestamp'
     data.sort_index(inplace=True)
     data = data.round(2)
+    data.to_csv('test.csv')
 # Append the new data to the old data stored in the csv
     try:
         old_data = pd.read_csv(logFileName, index_col=0)
@@ -68,14 +69,14 @@ def read():
             if name not in readGadgets:
                 print('Connecting to ', name, ' (', value['addr'],')', ' ...', sep='')
                 try :
-                    gadget = pySmartGadget.SHT31(value['addr'])
+                    gadget = pySmartGadget.SHT31(value['addr'], iface=0)
                     print('Successfully connected to', name)
                     gadget.setDeviceName(name)
                     print('Reading data of', name)
                     gadget.readLoggedDataInterval()
                     
                     while 1:
-                        if False is gadget.waitForNotifications(5) or False is gadget.isLogReadoutInProgress():
+                        if gadget.waitForNotifications(3) is False:
                             print('Finished reading data of', name)
                             readGadgets.append(name)
                             storeData(name, gadget.loggedData)
@@ -88,23 +89,24 @@ def read():
                     
                     break
                 except btle.BTLEException as ex:
-                    print('Could not connect to ', name, ', retrying later.', sep='')
+                    print('Could not connect to ', name, ', retrying later.', ex, sep='')
 
     
 
 def show():
     try:
         data = pd.read_csv(logFileName, index_col=0)
-        data.index = [dt.datetime.fromtimestamp(int(x/1000)) for x in data.index.values]
-    
-        data = data.ffill()
-        data = data.bfill()
-        
-        data.plot(aa=False, drawstyle='steps')
-        
-        plt.show()
+        data = pd.read_csv('test.csv', index_col=0)
     except Exception as ex:
         print('Could not read existing logfile.')
+    data.index = [dt.datetime.fromtimestamp(int(x/1000)) for x in data.index.values]
+
+    #data = data.ffill()
+    #data = data.bfill()
+    
+    data.plot(aa=False, style='.-', drawstyle='steps-post')
+    
+    plt.show()
         
  
 def main():

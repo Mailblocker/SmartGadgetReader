@@ -1,6 +1,7 @@
 from bluepy.btle import UUID, Peripheral, DefaultDelegate
 import struct
 import time
+from symbol import typedargslist
 
 class MyDelegate(DefaultDelegate):
     
@@ -10,34 +11,45 @@ class MyDelegate(DefaultDelegate):
         self.sustainedNotifications = {}
         self.sustainedNotifications['Temp'] = 0
         self.sustainedNotifications['Humi'] = 0
+        self.lastRunNumber = {}
+        self.lastRunNumber['Temp'] = -1
+        self.lastRunNumber['Humi'] = -1
 
     def handleNotification(self, cHandle, data):
         # data format for logging data: runnumber (4 bytes (unsigned int)) + N * value (N * 4 bytes (float32); while: 1 <= N <=4 )
         # data format for non-logging data: value (4 bytes (float32)) 
         unpackedData = list(struct.unpack('I'+str(int((len(data)-4)/4))+'f', data))
         runnumber = unpackedData.pop(0)
-        
+        #print('timestamp:',time.time(),' runnumber',runnumber, 'len', len(unpackedData))
         typeData = ''
-        if 55 is cHandle:
+        if 55 == cHandle:
             typeData = 'Temp'
-        elif 50 is cHandle:
+        elif 50 == cHandle:
             typeData = 'Humi'
-        
+
         if 0 < len(unpackedData):
             # logging data
+            if self.lastRunNumber[typeData] == -1:
+                self.lastRunNumber[typeData] = runnumber
+            else:
+                if self.lastRunNumber[typeData] != runnumber:
+                    print('data_missing; lastnumber', self.lastRunNumber[typeData],' runnumber: ', runnumber)
+            
             self.sustainedNotifications[typeData] = 0
             for x in unpackedData:
                 self.parent.loggedData[typeData][self.parent.newestTimeStampMs-runnumber*self.parent.loggerInterval] = x
                 runnumber = runnumber+1
+            self.lastRunNumber[typeData] = runnumber
         else:
             # non logging data
             self.sustainedNotifications[typeData] = self.sustainedNotifications[typeData] + 1
             if 1 < self.sustainedNotifications[typeData]:
-                # logging data transmission done
                 self.sustainedNotifications[typeData] = 2
-                if 1 < self.sustainedNotifications['Temp'] and 1 < self.sustainedNotifications['Humi']:
-                    self.parent.loggingReadout = False
+                if typeData == 'Temp':
+                    self.lastRunNumber['Temp'] = -1
                     self.parent.setTemperatureNotification(False)
+                elif typeData == 'Humi':
+                    self.lastRunNumber['Humi'] = -1
                     self.parent.setHumidityNotification(False)
              
 class SHT31:
@@ -149,8 +161,6 @@ class SHT31:
     def readLoggedDataInterval(self, startMs = None, stopMs = None):
         self.setSyncTimeMs()
         time.sleep(1) # Sleep 1s to enable the gadget to set the SyncTime; otherwise 0 is read when readNewestTimestampMs is used
-        self.setTemperatureNotification(True)
-        self.setHumidityNotification(True)
         
         self.loggerInterval = self.readLoggerIntervalMs()
         if startMs is not None:
@@ -159,12 +169,11 @@ class SHT31:
             self.setNewestTimestampMs(stopMs)
             
         self.newestTimeStampMs = self.readNewestTimestampMs()
-        self.loggingReadout = True
+        print('values to read:',(self.newestTimeStampMs-self.readOldestTimestampMs())/self.loggerInterval)
+        self.setTemperatureNotification(True)
+        self.setHumidityNotification(True)
+        #time.sleep(1)
         self.characteristics['StartLoggerDownload'].write((1).to_bytes(1, byteorder='little'))
 
     def waitForNotifications(self, timeout):
         return self.peripheral.waitForNotifications(timeout)
-        
-    def isLogReadoutInProgress(self):
-        return self.loggingReadout
-    
